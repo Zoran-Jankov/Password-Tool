@@ -1,8 +1,14 @@
-$Admin = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
-$LogPath = "\\s3\Sektor informacionih tehnologija\Logs\Password-Tool.log"
-$SearchBase = "OU=Korisnici,OU=Centrala,DC=uni,DC=net"
-$Users = Get-ADUser -SearchBase $SearchBase -Filter {Enabled -eq $true} | Sort-Object -Property 'UserPrincipalName'
 $TempPassword = "Privremen0"
+$Admin = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
+$SearchBase = "OU=Korisnici,OU=Centrala,DC=uni,DC=net"
+
+$Users = Get-ADUser -SearchBase $SearchBase -Filter {Enabled -eq $true} `
+    -Properties 'LockedOut', 'PasswordLastSet' | Sort-Object -Property 'UserPrincipalName'
+
+$UsersTable = [ordered]@{}
+foreach ($Accout in $Users) {
+    $UsersTable.Add($Accout.UserPrincipalName, $Accout)
+}
 
 #-----------------------------------------------------------[Functions]------------------------------------------------------------
 
@@ -181,7 +187,7 @@ foreach ($User in $Users) {
 }
 
 $UserComboBox.Add_TextChanged({
-    $SelectedUser = Get-ADUser -Identity $UserComboBox.Text -Properties 'LockedOut', 'PasswordLastSet'
+    $SelectedUser = $UsersTable.Get_Item($UserComboBox.Text)
     if ($SelectedUser -ne $null) {
         if ($SelectedUser.LockedOut) {
             $BlockedLabel.Text = "Locked Out"
@@ -201,19 +207,22 @@ $UserComboBox.Add_TextChanged({
 })
 
 $UnblockButton.Add_Click({
-    $SelectedUser = Get-ADUser -Identity $UserComboBox.Text
+    $SelectedUser = $UsersTable.Get_Item($UserComboBox.Text)
     try {
         Unlock-ADAccount -Identity $SelectedUser
     }
     catch {
         $UserName = $UserComboBox.Text
         Write-Log -Message ("Admin ""$Admin"" failed to unblock ""$UserName"" account`r`n" + $_.Exception)
+        break
     }
+    $BlockedLabel.Text = "Active"
+    $BlockedLabel.ForeColor = [System.Drawing.ColorTranslator]::FromHtml("#00ff00")
     Write-Log -Message "Admin ""$Admin"" successfully unblocked ""$UserName"" account"
 })
 
 $ResetPasswordButton.Add_Click({
-    $SelectedUser = Get-ADUser -Identity $UserComboBox.Text
+    $SelectedUser = $UsersTable.Get_Item($UserComboBox.Text)
     Set-ADAccountPassword -Identity $SelectedUser `
         -Reset -NewPassword (ConvertTo-SecureString -AsPlainText $TempPassword -Force)
         Unlock-ADAccount -Identity $SelectedUser
