@@ -8,7 +8,7 @@
 
 GUI PowerShell tool for unblocking user accounts and resetting user account passwords.
 
-![Application Window](https://raw.githubusercontent.com/Zoran-Jankov/Password-Tool/main/Application%Window.png)
+![Application Window](https://github.com/Zoran-Jankov/Password-Tool/blob/main/Application%20Window.png)
 
 ## Requirements
 
