@@ -1,14 +1,8 @@
+#---------------------------------------------------------[Initialisations]--------------------------------------------------------
+
 $TempPassword = "Privremen0"
-$Admin = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
 $SearchBase = "OU=Korisnici,OU=Centrala,DC=uni,DC=net"
-
-$Users = Get-ADUser -SearchBase $SearchBase -Filter {Enabled -eq $true} `
-    -Properties 'LockedOut', 'PasswordLastSet' | Sort-Object -Property 'UserPrincipalName'
-
-$UsersTable = [ordered]@{}
-foreach ($Accout in $Users) {
-    $UsersTable.Add($Accout.UserPrincipalName, $Accout)
-}
+$Admin = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
 
 #-----------------------------------------------------------[Functions]------------------------------------------------------------
 
@@ -111,13 +105,79 @@ function Write-Log {
         }
     }
 }
+<#
+.SYNOPSIS
+Returns a hash table of AD User objects mapped with usernames of the same users
 
-function Get-AccountInfo {
+.DESCRIPTION
+Long description
+
+.PARAMETER SearchBase
+Specifies an Active Directory path to search under
+
+.EXAMPLE
+Get-AccountsInfo -SearchBase 'OU=Users,DC=company,DC=com'
+
+.EXAMPLE
+Get-AccountsInfo 'OU=Users,DC=company,DC=com'
+
+.EXAMPLE
+'OU=Users,DC=company,DC=com' | Get-AccountsInfo -SearchBase
+
+.NOTES
+Version:        1.0
+Author:         Zoran Jankov
+#>
+function Get-AccountsInfo {
+    [CmdletBinding()]
     param (
-        $User
+        [Parameter(Mandatory = $true,
+                   Position = 0,
+                   ValueFromPipeline = $true,
+                   ValueFromPipelineByPropertyName = $true,
+                   HelpMessage = "Specifies an Active Directory path to search under")]
+        [string]
+        $SearchBase
     )
+
+    begin {
+        $DomainSuffix = "@" + (Get-ADDomain).Forest
+    }
+
+    process {
+        $Users = Get-ADUser -SearchBase $SearchBase -Filter {Enabled -eq $true} `
+            -Properties 'LockedOut', 'PasswordLastSet' | Sort-Object -Property 'UserPrincipalName'
+
+        $UsersTable = [ordered]@{}
+        foreach ($Accout in $Users) {
+            $UsersTable.Add(($Accout.UserPrincipalName).Replace($DomainSuffix, ""), $Accout)
+        }
+        return $UsersTable
+    }
 }
 
+function Update-Display {
+    $SelectedUser = $UsersTable.Get_Item($UserComboBox.Text)
+    if ($null -ne $SelectedUser) {
+        if ($SelectedUser.LockedOut) {
+            $BlockedLabel.Text = "Locked Out"
+            $BlockedLabel.ForeColor = [System.Drawing.ColorTranslator]::FromHtml("#ff0000")
+        }
+        else {
+            $BlockedLabel.Text = "Active"
+            $BlockedLabel.ForeColor = [System.Drawing.ColorTranslator]::FromHtml("#00ff00")
+        }
+        $LastPassChangeValue.Text = ($SelectedUser.PasswordLastSet.tostring("dd.MM.yyyy. HH:mm"))
+    }
+    else {
+        $BlockedLabel.Text = ""
+        $LastPassChangeValue.Text = ""
+    }
+}
+
+#-----------------------------------------------------------[Execution]------------------------------------------------------------
+
+$UsersTable = Get-AccountsInfo -SearchBase $SearchBase
 Add-Type -AssemblyName System.Windows.Forms
 [System.Windows.Forms.Application]::EnableVisualStyles()
 
@@ -180,53 +240,59 @@ $LastPassChangeLabel.height      = 10
 $LastPassChangeLabel.location    = New-Object System.Drawing.Point(390,90)
 $LastPassChangeLabel.Font        = New-Object System.Drawing.Font('Microsoft Sans Serif',10)
 
-$MainForm.controls.AddRange(@($UserLabel,$UserComboBox,$BlockedLabel,$UnblockButton,$ResetPasswordButton,$LastPassChangeValue,$LastPassChangeLabel))
+$MainForm.controls.AddRange(@(
+    $UserLabel,
+    $UserComboBox,
+    $BlockedLabel,
+    $UnblockButton,
+    $ResetPasswordButton,
+    $LastPassChangeValue,
+    $LastPassChangeLabel
+    ))
 
-foreach ($User in $Users) {
-    $UserComboBox.Items.Add($User.Name)
+foreach ($Username in $UsersTable.Keys.GetEnumerator()) {
+    $UserComboBox.Items.Add($Username)
 }
 
 $UserComboBox.Add_TextChanged({
-    $SelectedUser = $UsersTable.Get_Item($UserComboBox.Text)
-    if ($SelectedUser -ne $null) {
-        if ($SelectedUser.LockedOut) {
-            $BlockedLabel.Text = "Locked Out"
-            $BlockedLabel.ForeColor = [System.Drawing.ColorTranslator]::FromHtml("#ff0000")
-            LastPassChangeValue
-        }
-        else {
-            $BlockedLabel.Text = "Active"
-            $BlockedLabel.ForeColor = [System.Drawing.ColorTranslator]::FromHtml("#00ff00")
-        }
-        $LastPassChangeValue.Text = ($SelectedUser.PasswordLastSet.tostring("dd.MM.yyyy. HH:mm"))
-    }
-    else {
-        $BlockedLabel.Text = ""
-        $LastPassChangeValue.Text = ""
-    }
+    Update-Display
 })
 
 $UnblockButton.Add_Click({
     $SelectedUser = $UsersTable.Get_Item($UserComboBox.Text)
+    $UserName = $UserComboBox.Text
     try {
         Unlock-ADAccount -Identity $SelectedUser
     }
     catch {
-        $UserName = $UserComboBox.Text
-        Write-Log -Message ("Admin ""$Admin"" failed to unblock ""$UserName"" account`r`n" + $_.Exception)
-        break
+        Write-Log -Message ("Admin '$Admin' failed to unblock '$UserName' user account`r`n" + $_.Exception)
+        [System.Windows.Forms.MessageBox]::Show("Failed to unblock '$UserName' user account")
+        continue
     }
-    $BlockedLabel.Text = "Active"
-    $BlockedLabel.ForeColor = [System.Drawing.ColorTranslator]::FromHtml("#00ff00")
-    Write-Log -Message "Admin ""$Admin"" successfully unblocked ""$UserName"" account"
+    $UsersTable = Get-AccountsInfo -SearchBase $SearchBase
+    Update-Display
+    Write-Log -Message "Admin '$Admin' successfully unblocked '$UserName' user account"
+    [System.Windows.Forms.MessageBox]::Show("'$UserName' user account successfully unblocked")
 })
 
 $ResetPasswordButton.Add_Click({
     $SelectedUser = $UsersTable.Get_Item($UserComboBox.Text)
-    Set-ADAccountPassword -Identity $SelectedUser `
-        -Reset -NewPassword (ConvertTo-SecureString -AsPlainText $TempPassword -Force)
+    $UserName = $UserComboBox.Text
+    try {
+        Set-ADAccountPassword -Identity $SelectedUser `
+            -Reset -NewPassword (ConvertTo-SecureString -AsPlainText $TempPassword -Force)
         Unlock-ADAccount -Identity $SelectedUser
         Set-ADUser -Identity $SelectedUser -ChangePasswordAtLogon $true
+    }
+    catch {
+        Write-Log -Message ("Admin '$Admin' failed to change '$UserName' user account password`r`n" + $_.Exception)
+        [System.Windows.Forms.MessageBox]::Show("Failed to change '$UserName' user account password")
+        continue
+    }
+    $UsersTable = Get-AccountsInfo -SearchBase $SearchBase
+    Update-Display
+    Write-Log -Message "Admin '$Admin' successfully changed '$UserName' user account password"
+    [System.Windows.Forms.MessageBox]::Show("'$UserName' user account password successfully changed")
 })
 
 [void]$MainForm.ShowDialog()
