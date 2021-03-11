@@ -261,38 +261,45 @@ $UserComboBox.Add_TextChanged({
 $UnblockButton.Add_Click({
     $SelectedUser = $UsersTable.Get_Item($UserComboBox.Text)
     $UserName = $UserComboBox.Text
-    try {
-        Unlock-ADAccount -Identity $SelectedUser
+    $Choice = [System.Windows.Forms.MessageBox]::Show("Are you sure you want to unblock $UserName user account?", "Unblock Account", 4)
+    if ($Choice -eq 'Yes') {
+        try {
+            Unlock-ADAccount -Identity $SelectedUser
+        }
+        catch {
+            Write-Log -Message ("Admin '$Admin' failed to unblock '$UserName' user account`r`n" + $_.Exception)
+            [System.Windows.Forms.MessageBox]::Show("Failed to unblock $UserName user account", "Error")
+            continue
+        }
+        $UsersTable = Get-AccountsInfo -SearchBase $SearchBase
+        Update-Display
+        Write-Log -Message "Admin '$Admin' successfully unblocked '$UserName' user account"
+        [System.Windows.Forms.MessageBox]::Show("$UserName user account successfully unblocked", "Info")
     }
-    catch {
-        Write-Log -Message ("Admin '$Admin' failed to unblock '$UserName' user account`r`n" + $_.Exception)
-        [System.Windows.Forms.MessageBox]::Show("Failed to unblock '$UserName' user account")
-        continue
-    }
-    $UsersTable = Get-AccountsInfo -SearchBase $SearchBase
-    Update-Display
-    Write-Log -Message "Admin '$Admin' successfully unblocked '$UserName' user account"
-    [System.Windows.Forms.MessageBox]::Show("'$UserName' user account successfully unblocked")
 })
 
 $ResetPasswordButton.Add_Click({
     $SelectedUser = $UsersTable.Get_Item($UserComboBox.Text)
     $UserName = $UserComboBox.Text
-    try {
-        Set-ADAccountPassword -Identity $SelectedUser `
-            -Reset -NewPassword (ConvertTo-SecureString -AsPlainText $TempPassword -Force)
-        Unlock-ADAccount -Identity $SelectedUser
-        Set-ADUser -Identity $SelectedUser -ChangePasswordAtLogon $true
+    $Choice = [System.Windows.Forms.MessageBox]::Show("Are you sure you want to reset $UserName user account password?", "Reset Account Password", 4)
+    if ($Choice -eq 'Yes') {
+        try {
+            Set-ADAccountPassword -Identity $SelectedUser `
+                -Reset -NewPassword (ConvertTo-SecureString -AsPlainText $TempPassword -Force)
+            Unlock-ADAccount -Identity $SelectedUser
+            Set-ADUser -Identity $SelectedUser -ChangePasswordAtLogon $true
+        }
+        catch {
+            Write-Log -Message ("Admin '$Admin' failed to change '$UserName' user account password`r`n" + $_.Exception)
+            [System.Windows.Forms.MessageBox]::Show("Failed to change $UserName user account password", "Error")
+            continue
+        }
+        $UsersTable = Get-AccountsInfo -SearchBase $SearchBase
+        Update-Display
+        Write-Log -Message "Admin '$Admin' successfully changed '$UserName' user account password"
+        [System.Windows.Forms.MessageBox]::Show("$UserName user account password successfully changed", "Info")
     }
-    catch {
-        Write-Log -Message ("Admin '$Admin' failed to change '$UserName' user account password`r`n" + $_.Exception)
-        [System.Windows.Forms.MessageBox]::Show("Failed to change '$UserName' user account password")
-        continue
-    }
-    $UsersTable = Get-AccountsInfo -SearchBase $SearchBase
-    Update-Display
-    Write-Log -Message "Admin '$Admin' successfully changed '$UserName' user account password"
-    [System.Windows.Forms.MessageBox]::Show("'$UserName' user account password successfully changed")
+    
 })
 
 [void]$MainForm.ShowDialog()

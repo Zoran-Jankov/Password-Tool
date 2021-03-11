@@ -1,2 +1,3 @@
 # Password-Tool
- GUI PowerShell tool for unblocking user accounts and resetting user account passwords.
+
+GUI PowerShell tool for unblocking user accounts and resetting user account passwords.
