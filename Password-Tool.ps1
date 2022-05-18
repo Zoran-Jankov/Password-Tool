@@ -1,7 +1,7 @@
 #---------------------------------------------------------[Initialisations]--------------------------------------------------------
 
 $TempPassword = "Privremen0"
-$SearchBase = "OU=Korisnici,OU=Centrala,DC=uni,DC=net"
+$SearchBase = "OU=Employeesi,DC=company,DC=com"
 $Admin = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
 $Users = $null
 
